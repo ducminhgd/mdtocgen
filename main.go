@@ -8,12 +8,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 )
 
 type MDFileInfo struct {
-	Name     string
+	Key      string
 	IsDir    bool
 	Children map[string]MDFileInfo
 	Title    string
@@ -26,10 +28,12 @@ func main() {
 		wd      string
 		outFile string
 		title   string
+		sortAsc bool
 	)
 	flag.StringVar(&wd, "dir", ".", "Directory to read the file")
 	flag.StringVar(&outFile, "out", "", "Output file")
 	flag.StringVar(&title, "t", "", "Title of output file, default is the `dir`")
+	flag.BoolVar(&sortAsc, "asc", true, "Order the TOC in ascending order, if false, it will be in descending order")
 	flag.Parse()
 
 	files, err := ListMDFiles(wd)
@@ -46,27 +50,15 @@ func main() {
 		files.Title = title
 	}
 
-	toc := CreateTocTree(files, "  ")
+	toc := CreateTocTree(files, "  ", sortAsc)
 
 	if outFile != "" {
 		err = os.WriteFile(outFile, []byte(toc), 0644)
 		if err != nil {
 			log.Fatal(err)
 		}
-	}
-}
-
-// printMDFileInfo prints the information of an MDFileInfo struct in a formatted way.
-//
-// It takes an MDFileInfo struct as a parameter and prints its name, level, and title.
-// If the MDFileInfo struct is a directory, it recursively prints the information of its children.
-// The function does not return anything and is used for debugging purposes.
-func printMDFileInfo(f MDFileInfo) {
-	fmt.Printf("%s %s => %s\n", strings.Repeat("\t", f.Level), f.Name, f.Title)
-	if f.IsDir {
-		for _, child := range f.Children {
-			printMDFileInfo(child)
-		}
+	} else {
+		fmt.Println(toc)
 	}
 }
 
@@ -85,7 +77,7 @@ func printMDFileInfo(f MDFileInfo) {
 // - `Path`: the full path of the file or directory
 func ListMDFiles(dirPath string) (MDFileInfo, error) {
 	root := MDFileInfo{
-		Name:     ".",
+		Key:      ".",
 		IsDir:    true,
 		Children: make(map[string]MDFileInfo),
 		Level:    0,
@@ -108,7 +100,7 @@ func ListMDFiles(dirPath string) (MDFileInfo, error) {
 					}
 					if _, ok := p.Children[d]; !ok {
 						p.Children[d] = MDFileInfo{
-							Name:     d,
+							Key:      d,
 							IsDir:    true,
 							Children: make(map[string]MDFileInfo),
 							Level:    p.Level + 1,
@@ -119,7 +111,7 @@ func ListMDFiles(dirPath string) (MDFileInfo, error) {
 					p = p.Children[d]
 				}
 				p.Children[info.Name()] = MDFileInfo{
-					Name:  strings.TrimRight(info.Name(), filepath.Ext(info.Name())),
+					Key:   strings.TrimRight(info.Name(), filepath.Ext(info.Name())),
 					IsDir: false,
 					Level: p.Level + 1,
 					Title: GetMDTitle(path),
@@ -166,14 +158,16 @@ func GetMDTitle(filePath string) string {
 	return ""
 }
 
-// CreateTocTree generates a table of contents (TOC) tree for a given MDFileInfo struct.
+// CreateTocTree generates a table of contents (TOC) tree for the given MDFileInfo.
 //
-// It takes two parameters:
-// - md: an MDFileInfo struct representing the file or directory for which the TOC is generated.
-// - indent: a string representing the indentation for each level of the TOC tree.
+// Parameters:
+// - md: the MDFileInfo object representing the file or directory.
+// - indent: the string used for indentation in the TOC.
+// - sortAsc: a boolean indicating whether the TOC should be sorted in ascending order.
 //
-// It returns a string representing the generated TOC tree.
-func CreateTocTree(md MDFileInfo, indent string) string {
+// Returns:
+// - string: the generated TOC tree.
+func CreateTocTree(md MDFileInfo, indent string, sortAsc bool) string {
 	var (
 		toc string
 	)
@@ -182,19 +176,30 @@ func CreateTocTree(md MDFileInfo, indent string) string {
 		toc = "# " + md.Title + "\n"
 	case 1:
 		if md.IsDir {
-			toc = fmt.Sprintf("\n## %s\n\n", md.Name)
+			toc = fmt.Sprintf("\n## %s\n\n", md.Key)
 		} else {
 			toc = fmt.Sprintf("\n## [%s](%s)\n\n", md.Title, md.Path)
 		}
 	default:
 		if md.IsDir {
-			toc = fmt.Sprintf("%s- %s\n", strings.Repeat(indent, md.Level-2), md.Name)
+			toc = fmt.Sprintf("%s- %s\n", strings.Repeat(indent, md.Level-2), md.Key)
 		} else {
 			toc = fmt.Sprintf("%s- [%s](%s)\n", strings.Repeat(indent, md.Level-2), md.Title, md.Path)
 		}
 	}
-	for _, child := range md.Children {
-		toc += CreateTocTree(child, indent)
+	keys := reflect.ValueOf(md.Children).MapKeys()
+	stringKeys := make([]string, len(keys))
+	for i, key := range keys {
+		stringKeys[i] = key.String()
+	}
+	if sortAsc {
+		sort.Strings(stringKeys)
+	} else {
+		sort.Sort(sort.Reverse(sort.StringSlice(stringKeys)))
+	}
+
+	for _, key := range stringKeys {
+		toc += CreateTocTree(md.Children[key], indent, sortAsc)
 	}
 	return toc
 }
