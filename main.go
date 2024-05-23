@@ -15,7 +15,6 @@ import (
 )
 
 type MDFileInfo struct {
-	Key      string
 	IsDir    bool
 	Children map[string]MDFileInfo
 	Title    string
@@ -77,7 +76,6 @@ func main() {
 // - `Path`: the full path of the file or directory
 func ListMDFiles(dirPath string) (MDFileInfo, error) {
 	root := MDFileInfo{
-		Key:      ".",
 		IsDir:    true,
 		Children: make(map[string]MDFileInfo),
 		Level:    0,
@@ -100,18 +98,16 @@ func ListMDFiles(dirPath string) (MDFileInfo, error) {
 					}
 					if _, ok := p.Children[d]; !ok {
 						p.Children[d] = MDFileInfo{
-							Key:      d,
 							IsDir:    true,
 							Children: make(map[string]MDFileInfo),
 							Level:    p.Level + 1,
-							Title:    "",
+							Title:    d,
 							Path:     url.PathEscape(filepath.Join(p.Path, d)),
 						}
 					}
 					p = p.Children[d]
 				}
 				p.Children[info.Name()] = MDFileInfo{
-					Key:   strings.TrimRight(info.Name(), filepath.Ext(info.Name())),
 					IsDir: false,
 					Level: p.Level + 1,
 					Title: GetMDTitle(path),
@@ -176,13 +172,13 @@ func CreateTocTree(md MDFileInfo, indent string, sortAsc bool) string {
 		toc = "# " + md.Title + "\n"
 	case 1:
 		if md.IsDir {
-			toc = fmt.Sprintf("\n## %s\n\n", md.Key)
+			toc = fmt.Sprintf("\n## %s\n\n", md.Title)
 		} else {
 			toc = fmt.Sprintf("\n## [%s](%s)\n\n", md.Title, md.Path)
 		}
 	default:
 		if md.IsDir {
-			toc = fmt.Sprintf("%s- %s\n", strings.Repeat(indent, md.Level-2), md.Key)
+			toc = fmt.Sprintf("%s- %s\n", strings.Repeat(indent, md.Level-2), md.Title)
 		} else {
 			toc = fmt.Sprintf("%s- [%s](%s)\n", strings.Repeat(indent, md.Level-2), md.Title, md.Path)
 		}
